@@ -87,3 +87,4 @@ databases:
     plan: free
     databaseName: analyticore
     user: analyticore
+    ipAllowList: []
