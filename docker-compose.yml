@@ -1,53 +1,85 @@
 services:
-  # 1. Base de datos central (PostgreSQL)
   postgres-db:
     image: postgres:15-alpine
-    container_name: analyticore-db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}
       POSTGRES_DB: analyticore
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d analyticore"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
-  # 2. Servicio de Análisis (Java)
   java-service:
     build: ./java-service
-    container_name: analyticore-java
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgresql://postgres:mysecretpassword@postgres-db:5432/analyticore
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-local_dev_password}@postgres-db:5432/analyticore
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-local_internal_key}
       PORT: 8080
+      WORKER_THREADS: 2
+      WORKER_QUEUE_CAPACITY: 50
     depends_on:
-      - postgres-db
+      postgres-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
-  # 3. Servicio de Submisión (Python)
   python-service:
     build: ./python-service
-    container_name: analyticore-python
     ports:
       - "5000:5000"
     environment:
-      DATABASE_URL: postgresql://postgres:mysecretpassword@postgres-db:5432/analyticore
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-local_dev_password}@postgres-db:5432/analyticore
       JAVA_SERVICE_URL: http://java-service:8080
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-local_internal_key}
+      FRONTEND_ORIGIN: http://localhost:3000
+      MAX_TEXT_LENGTH: 5000
+      MAX_REQUEST_BYTES: 65536
+      NOTIFY_MAX_ATTEMPTS: 5
+      NOTIFY_TIMEOUT_SECONDS: 12
+      RETRY_AFTER_SECONDS: 120
+      GUNICORN_TIMEOUT_SECONDS: 180
       PORT: 5000
     depends_on:
-      - postgres-db
-      - java-service
+      postgres-db:
+        condition: service_healthy
+      java-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
-  # 4. Frontend Web (React + Nginx)
   frontend:
-    build: ./frontend
-    container_name: analyticore-frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:5000
+        VITE_MAX_TEXT_LENGTH: 5000
+        VITE_RETRY_AFTER_SECONDS: 120
     ports:
-      - "3000:80"
+      - "3000:8080"
     environment:
-      PORT: 80
+      PORT: 8080
     depends_on:
-      - python-service
+      python-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
 volumes:
   pgdata:

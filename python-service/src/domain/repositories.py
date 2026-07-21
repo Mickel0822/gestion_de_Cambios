@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Optional, Dict
 from src.domain.entities import Job
 
@@ -11,6 +12,11 @@ class JobRepository(ABC):
     @abstractmethod
     def get_by_id(self, job_id: int) -> Optional[Job]:
         """Obtiene un trabajo por su ID."""
+        pass
+
+    @abstractmethod
+    def claim_for_retry(self, job_id: int, retry_before: datetime) -> Optional[Job]:
+        """Reinicia un trabajo elegible de forma atómica; devuelve None si otra petición lo reclamó."""
         pass
 
     @abstractmethod

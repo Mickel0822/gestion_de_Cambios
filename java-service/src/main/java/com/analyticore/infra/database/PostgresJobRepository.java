@@ -1,99 +1,117 @@
 package com.analyticore.infra.database;
 
 import com.analyticore.domain.entities.Job;
+import com.analyticore.domain.exceptions.RepositoryException;
 import com.analyticore.domain.repositories.JobRepository;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.time.LocalDateTime;
+import java.util.Properties;
 
 public class PostgresJobRepository implements JobRepository {
-    private final String dbUrl;
+    private final String jdbcUrl;
+    private final Properties connectionProperties;
 
     public PostgresJobRepository(String databaseUrl) {
-        this.dbUrl = convertDatabaseUrl(databaseUrl);
-        // Intentar registrar el driver de PostgreSQL
+        DatabaseConfig config = parseDatabaseUrl(databaseUrl);
+        this.jdbcUrl = config.jdbcUrl();
+        this.connectionProperties = config.properties();
+        this.connectionProperties.putIfAbsent("connectTimeout", "10");
+        this.connectionProperties.putIfAbsent("socketTimeout", "30");
+        this.connectionProperties.putIfAbsent("tcpKeepAlive", "true");
         try {
             Class.forName("org.postgresql.Driver");
-        } catch (ClassNotFoundException e) {
-            System.err.println("No se pudo cargar el driver JDBC de PostgreSQL: " + e.getMessage());
+        } catch (ClassNotFoundException error) {
+            throw new IllegalStateException("No se pudo cargar el driver JDBC de PostgreSQL.", error);
         }
     }
 
-    private String convertDatabaseUrl(String databaseUrl) {
-        if (databaseUrl == null || databaseUrl.isEmpty()) {
-            return "";
+    private DatabaseConfig parseDatabaseUrl(String databaseUrl) {
+        if (databaseUrl == null || databaseUrl.isBlank()) {
+            return new DatabaseConfig("", new Properties());
         }
-        
-        // Conversión del formato estándar de variables de entorno postgres:// a jdbc:postgresql://
-        if (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://")) {
-            String cleanUrl = databaseUrl.replaceFirst("postgres(ql)?://", "");
-            String[] parts = cleanUrl.split("@");
-            if (parts.length < 2) return databaseUrl;
-            
-            String credentials = parts[0];
-            String hostDb = parts[1];
-            
-            String[] credParts = credentials.split(":");
-            String user = credParts[0];
-            String password = credParts.length > 1 ? credParts[1] : "";
-            
-            String sslParams = "";
-            if (!hostDb.contains("?") && !hostDb.contains("postgres-db") && !hostDb.contains("localhost") && !hostDb.contains("127.0.0.1")) {
-                sslParams = "?sslmode=require";
+        if (databaseUrl.startsWith("jdbc:postgresql://")) {
+            return new DatabaseConfig(databaseUrl, new Properties());
+        }
+        try {
+            URI uri = URI.create(databaseUrl);
+            String host = uri.getHost();
+            int port = uri.getPort() > 0 ? uri.getPort() : 5432;
+            String database = uri.getPath() == null ? "" : uri.getPath();
+            String query = uri.getQuery();
+            boolean local = host != null && (host.equals("localhost") || host.equals("127.0.0.1") || host.equals("postgres-db"));
+            String sslQuery = (query == null || query.isBlank()) && !local ? "sslmode=require" : query;
+            String jdbc = "jdbc:postgresql://" + host + ":" + port + database + (sslQuery == null ? "" : "?" + sslQuery);
+
+            Properties properties = new Properties();
+            if (uri.getRawUserInfo() != null) {
+                String userInfo = uri.getRawUserInfo();
+                int separator = userInfo.indexOf(':');
+                String user = separator >= 0 ? userInfo.substring(0, separator) : userInfo;
+                String password = separator >= 0 ? userInfo.substring(separator + 1) : "";
+                properties.setProperty("user", decodeUserInfo(user));
+                properties.setProperty("password", decodeUserInfo(password));
             }
-            
-            String connector = "jdbc:postgresql://" + hostDb + sslParams;
-            connector += (connector.contains("?") ? "&" : "?") + "user=" + user + "&password=" + password;
-            return connector;
+            return new DatabaseConfig(jdbc, properties);
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("DATABASE_URL no tiene un formato PostgreSQL válido.", error);
         }
-        return databaseUrl;
+    }
+
+    private String decodeUserInfo(String value) {
+        return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
     }
 
     private Connection getConnection() throws SQLException {
-        if (dbUrl.isEmpty()) {
-            throw new SQLException("DATABASE_URL no está configurada.");
-        }
-        return DriverManager.getConnection(dbUrl);
+        if (jdbcUrl.isBlank()) throw new SQLException("DATABASE_URL no está configurada.");
+        return DriverManager.getConnection(jdbcUrl, connectionProperties);
     }
 
     @Override
     public Job getById(int id) {
-        String sql = "SELECT id, text, status, sentiment, keywords, created_at FROM jobs WHERE id = ?";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setInt(1, id);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    Timestamp ts = rs.getTimestamp("created_at");
-                    LocalDateTime createdAt = ts != null ? ts.toLocalDateTime() : LocalDateTime.now();
-                    return new Job(
-                        rs.getInt("id"),
-                        rs.getString("text"),
-                        rs.getString("status"),
-                        rs.getString("sentiment"),
-                        rs.getString("keywords"),
-                        createdAt
-                    );
-                }
+        String sql = "SELECT id, text, status, sentiment, keywords, error_message, created_at FROM jobs WHERE id = ?";
+        try (Connection connection = getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                Timestamp timestamp = result.getTimestamp("created_at");
+                LocalDateTime createdAt = timestamp == null ? LocalDateTime.now() : timestamp.toLocalDateTime();
+                return new Job(result.getInt("id"), result.getString("text"), result.getString("status"),
+                    result.getString("sentiment"), result.getString("keywords"), result.getString("error_message"), createdAt);
             }
-        } catch (SQLException e) {
-            System.err.println("Error al obtener trabajo #" + id + " de Postgres: " + e.getMessage());
+        } catch (SQLException error) {
+            throw new RepositoryException("No se pudo obtener el trabajo #" + id + ".", error);
         }
-        return null;
     }
 
     @Override
     public void update(Job job) {
-        String sql = "UPDATE jobs SET status = ?, sentiment = ?, keywords = ? WHERE id = ?";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, job.getStatus());
-            stmt.setString(2, job.getSentiment());
-            stmt.setString(3, job.getKeywords());
-            stmt.setInt(4, job.getId());
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            System.err.println("Error al actualizar trabajo #" + job.getId() + " en Postgres: " + e.getMessage());
+        String sql = "UPDATE jobs SET status = ?, sentiment = ?, keywords = ?, error_message = ?, " +
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        try (Connection connection = getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, job.getStatus());
+            statement.setString(2, job.getSentiment());
+            statement.setString(3, job.getKeywords());
+            statement.setString(4, job.getErrorMessage());
+            statement.setInt(5, job.getId());
+            if (statement.executeUpdate() != 1) throw new SQLException("El trabajo no existe.");
+        } catch (SQLException error) {
+            throw new RepositoryException("No se pudo actualizar el trabajo #" + job.getId() + ".", error);
         }
     }
+
+    @Override
+    public boolean checkHealth() {
+        try (Connection connection = getConnection(); Statement statement = connection.createStatement();
+             ResultSet ignored = statement.executeQuery("SELECT 1")) {
+            return true;
+        } catch (SQLException error) {
+            return false;
+        }
+    }
+
+    private record DatabaseConfig(String jdbcUrl, Properties properties) {}
 }

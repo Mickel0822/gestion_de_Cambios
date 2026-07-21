@@ -2,10 +2,28 @@ package com.analyticore.application.usecases;
 
 import com.analyticore.domain.entities.Job;
 import com.analyticore.domain.repositories.JobRepository;
+
+import java.text.Normalizer;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ProcessJobUseCase {
+    private static final Set<String> POSITIVE_WORDS = Set.of(
+        "bueno", "excelente", "genial", "feliz", "encanta", "amor", "buena", "bien",
+        "increible", "maravilloso", "gusto", "satisfecho", "satisfecha"
+    );
+    private static final Set<String> NEGATIVE_WORDS = Set.of(
+        "malo", "pesimo", "horrible", "triste", "enojo", "odio", "mala", "mal",
+        "terrible", "desastre", "fracaso", "decepcion"
+    );
+    private static final Set<String> STOP_WORDS = Set.of(
+        "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "y", "o", "pero",
+        "para", "por", "con", "sin", "sobre", "en", "que", "como", "este", "esta", "estos", "estas", "es",
+        "son", "se", "lo", "mi", "tu", "su", "nos", "me", "te", "le", "les", "nosotros", "ellos", "ellas",
+        "muy", "mas", "tambien", "sino", "entonces", "cuando", "donde", "quien", "cual", "cuales"
+    );
+
     private final JobRepository repository;
 
     public ProcessJobUseCase(JobRepository repository) {
@@ -14,99 +32,63 @@ public class ProcessJobUseCase {
 
     public void execute(int jobId) {
         Job job = repository.getById(jobId);
-        if (job == null) {
-            System.out.println("Error: Trabajo con ID " + jobId + " no encontrado.");
-            return;
-        }
+        if (job == null) throw new IllegalArgumentException("Trabajo con ID " + jobId + " no encontrado.");
+        if ("COMPLETADO".equals(job.getStatus()) || "PROCESANDO".equals(job.getStatus())) return;
 
-        // 1. Cambiar estado a PROCESANDO y actualizar base de datos
-        job.setStatus("PROCESANDO");
-        repository.update(job);
-        System.out.println("Trabajo #" + jobId + " marcado como PROCESANDO.");
-
-        // Simular retardo de análisis de 1 segundo
         try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            job.setStatus("PROCESANDO");
+            job.setErrorMessage(null);
+            repository.update(job);
+
+            job.setSentiment(analyzeSentiment(job.getText()));
+            job.setKeywords(extractKeywords(job.getText()));
+            job.setStatus("COMPLETADO");
+            repository.update(job);
+        } catch (RuntimeException error) {
+            job.setStatus("ERROR");
+            job.setErrorMessage(safeMessage(error));
+            try {
+                repository.update(job);
+            } catch (RuntimeException updateError) {
+                error.addSuppressed(updateError);
+            }
+            throw error;
         }
+    }
 
-        // 2. Ejecutar análisis de sentimiento simple
-        String text = job.getText();
-        String sentiment = analyzeSentiment(text);
-        job.setSentiment(sentiment);
-
-        // 3. Ejecutar extracción de palabras clave
-        String keywords = extractKeywords(text);
-        job.setKeywords(keywords);
-
-        // 4. Cambiar estado a COMPLETADO y actualizar base de datos
-        job.setStatus("COMPLETADO");
-        repository.update(job);
-        System.out.println("Trabajo #" + jobId + " analizado con éxito y marcado como COMPLETADO.");
+    private String safeMessage(RuntimeException error) {
+        String message = error.getMessage() == null ? "Error inesperado durante el análisis." : error.getMessage();
+        return message.length() > 500 ? message.substring(0, 500) : message;
     }
 
     private String analyzeSentiment(String text) {
-        if (text == null) return "NEUTRO";
-        String normalized = text.toLowerCase();
-        
-        List<String> positiveWords = Arrays.asList(
-            "bueno", "excelente", "genial", "feliz", "encanta", "amor", "buena", "bien", "increible", "maravilloso", "gusto", "satisfecho"
-        );
-        List<String> negativeWords = Arrays.asList(
-            "malo", "pesimo", "horrible", "triste", "enojo", "odio", "mala", "mal", "terrible", "desastre", "fracaso", "decepcion"
-        );
-
-        int positiveCount = 0;
-        int negativeCount = 0;
-
-        for (String word : positiveWords) {
-            if (normalized.contains(word)) {
-                positiveCount++;
-            }
-        }
-        for (String word : negativeWords) {
-            if (normalized.contains(word)) {
-                negativeCount++;
-            }
-        }
-
-        if (positiveCount > negativeCount) {
-            return "POSITIVO";
-        } else if (negativeCount > positiveCount) {
-            return "NEGATIVO";
-        }
+        List<String> words = normalizedWords(text);
+        long positive = words.stream().filter(POSITIVE_WORDS::contains).count();
+        long negative = words.stream().filter(NEGATIVE_WORDS::contains).count();
+        if (positive > negative) return "POSITIVO";
+        if (negative > positive) return "NEGATIVO";
         return "NEUTRO";
     }
 
     private String extractKeywords(String text) {
-        if (text == null || text.trim().isEmpty()) return "";
-        
-        // Remover signos de puntuación básicos
-        String cleaned = text.replaceAll("[^a-zA-ZáéíóúñÁÉÍÓÚÑ\\s]", "");
-        String[] words = cleaned.split("\\s+");
-
-        // Stop words comunes en español para filtrar
-        Set<String> stopWords = new HashSet<>(Arrays.asList(
-            "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "y", "o", "pero", "para", 
-            "por", "con", "sin", "sobre", "en", "que", "como", "este", "esta", "estos", "estas", "es", "son",
-            "se", "lo", "mi", "tu", "su", "nos", "me", "te", "le", "les", "nosotros", "ellos", "ellas", "muy",
-            "mas", "tambien", "esta", "sino", "entonces", "cuando", "donde", "quien", "cual", "cuales"
-        ));
-
-        List<String> candidates = new ArrayList<>();
-        for (String word : words) {
-            String lw = word.toLowerCase().trim();
-            // Filtrar palabras cortas o que sean stop words
-            if (lw.length() > 4 && !stopWords.contains(lw)) {
-                candidates.add(lw);
-            }
-        }
-
-        // Obtener palabras únicas ordenadas por frecuencia o simplemente distintas (primeras 5)
-        return candidates.stream()
-            .distinct()
+        List<String> candidates = normalizedWords(text).stream()
+            .filter(word -> word.length() > 4 && !STOP_WORDS.contains(word))
+            .toList();
+        Map<String, Long> frequencies = candidates.stream().collect(Collectors.groupingBy(
+            Function.identity(), LinkedHashMap::new, Collectors.counting()));
+        return frequencies.entrySet().stream()
+            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
             .limit(5)
+            .map(Map.Entry::getKey)
             .collect(Collectors.joining(", "));
+    }
+
+    private List<String> normalizedWords(String text) {
+        if (text == null || text.isBlank()) return List.of();
+        String normalized = Normalizer.normalize(text.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+            .replaceAll("\\p{M}", "");
+        return Arrays.stream(normalized.split("[^a-zñ]+"))
+            .filter(word -> !word.isBlank())
+            .toList();
     }
 }

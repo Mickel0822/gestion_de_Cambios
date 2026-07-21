@@ -1,130 +1,111 @@
-# Diagramas de Arquitectura - AnalytiCore
+# Diagramas de arquitectura de AnalytiCore
 
-Este documento contiene el **Diagrama de Componentes** y los **Diagramas de Capas** (Clean Architecture) de cada uno de los microservicios de la plataforma "AnalytiCore".
-
----
-
-## 1. Diagrama de Componentes (Arquitectura General)
-
-Muestra la interacción a través de la red (APIs REST) de los contenedores Docker desplegados y la base de datos centralizada en Render.
+## 1. Diagrama de componentes
 
 ```mermaid
-graph TD
-    subgraph Red_Publica [Red Pública / Cliente]
-        User((Usuario))
-        ReactApp[Contenedor 1: React Frontend<br/>Servido por Nginx<br/>Puerto: $PORT]
-    end
+flowchart LR
+    User((Usuario)) -->|HTTPS| Frontend[React + Nginx\nContenedor frontend]
+    Frontend -->|POST /analyze\nGET /jobs/:id\nPOST /jobs/:id/retry| Python[Flask + Gunicorn\nServicio de submisión]
+    Python -->|POST /process-job\nX-Internal-Api-Key| Java[Java 17\nServicio de análisis]
+    Python <-->|SQL| DB[(PostgreSQL)]
+    Java <-->|SQL| DB
 
-    subgraph Red_Privada [Red Privada Render]
-        PythonApp[Contenedor 2: Python Service<br/>Flask + Gunicorn<br/>Puerto: $PORT]
-        JavaApp[Contenedor 3: Java Service<br/>HttpServer Nativo<br/>Puerto: $PORT]
-        Postgres[(Base de Datos:<br/>PostgreSQL Render)]
-    end
-
-    User -->|Navega / Interactúa| ReactApp
-    ReactApp -->|1. Envía Texto & 4. Polling de Estado<br/>HTTP REST /analyze| PythonApp
-    PythonApp -->|2. Inserta Trabajo PENDIENTE| Postgres
-    PythonApp -->|3. Notifica Trabajo síncronamente<br/>HTTP REST /process-job| JavaApp
-    JavaApp -->|5. Cambia estado a PROCESANDO| Postgres
-    JavaApp -->|6. Analiza sentimiento y palabras clave| JavaApp
-    JavaApp -->|7. Registra resultados y estado COMPLETADO| Postgres
-
-    style ReactApp fill:#61dafb,stroke:#333,stroke-width:2px,color:#000
-    style PythonApp fill:#3776ab,stroke:#333,stroke-width:2px,color:#fff
-    style JavaApp fill:#ed8b00,stroke:#333,stroke-width:2px,color:#fff
-    style Postgres fill:#336791,stroke:#333,stroke-width:2px,color:#fff
+    Java -.->|202 Aceptado| Python
+    Python -.->|201 + jobId| Frontend
 ```
 
----
+En Render gratuito los tres contenedores son Web Services. Java es públicamente direccionable, pero su operación de procesamiento exige una credencial compartida. En un plan pagado Java debe convertirse en Private Service.
 
-## 2. Diagramas de Capas (Arquitectura Limpia Interna)
-
-La regla de dependencia establece que las capas externas solo conocen y dependen de las capas internas.
-
-### A. Componente 1: Frontend (`frontend`)
+## 2. Flujo de un trabajo
 
 ```mermaid
-graph RL
-    subgraph Capa_Presentacion [Capa de Presentación - React]
-        UI[App.jsx Components<br/>Formularios, Vistas de Estado, Historial]
+sequenceDiagram
+    actor U as Usuario
+    participant F as React
+    participant P as Python
+    participant D as PostgreSQL
+    participant J as Java
+    U->>F: Envía texto
+    F->>P: POST /analyze
+    P->>D: INSERT estado PENDIENTE
+    P->>J: POST /process-job (con reintentos)
+    alt Java acepta
+        J-->>P: 202 ACEPTADO
+        P-->>F: 201 jobId
+        J->>D: UPDATE PROCESANDO
+        J->>J: Sentimiento + palabras clave
+        J->>D: UPDATE COMPLETADO
+    else Java no disponible
+        P->>D: UPDATE ERROR + detalle
+        P-->>F: 201 jobId + ERROR
+        F->>P: POST /jobs/:id/retry
     end
-
-    subgraph Capa_Adaptadores [Capa de Adaptadores / Clientes]
-        APIClient[fetch / Axios Client<br/>Llamadas a /analyze y /jobs]
+    loop Polling mientras está activo
+        F->>P: GET /jobs/:id
+        P->>D: SELECT trabajo
+        P-->>F: Estado y resultado
     end
-
-    UI -->|Depende de| APIClient
-    APIClient -.->|Envía peticiones HTTP| PythonService((Servicio Python))
-    
-    style UI fill:#bbf,stroke:#333,stroke-width:2px,color:#000
-    style APIClient fill:#dfd,stroke:#333,stroke-width:2px,color:#000
 ```
 
-### B. Componente 2: Python Service (`python-service`)
+## 3. Capas del frontend
 
 ```mermaid
-graph TD
-    subgraph Interfaz_Infraestructura [Capa de Interfaz y Adaptadores]
-        Routes[Flask App / Rutas<br/>POST /analyze y GET /jobs]
-        DBRepo[PostgresJobRepository<br/>psycopg2 SQL queries]
-        HttpClient[HttpAnalysisServiceClient<br/>requests API Client]
-    end
+flowchart TB
+    Composition[App.jsx\nComposition Root]
+    Presentation[Presentación\nHeader, Composer, Results, History]
+    Application[Aplicación\nuseJobAnalysis y polling]
+    Domain[Dominio\nJobStatus y reglas de estado]
+    Api[Infraestructura\napiClient]
+    Storage[Infraestructura\nhistoryStorage + configuration]
 
-    subgraph Aplicacion [Capa de Aplicación - Casos de Uso]
-        UC1[SubmitJobUseCase]
-        UC2[GetJobStatusUseCase]
-        UC3[CheckHealthUseCase]
-    end
-
-    subgraph Dominio [Capa de Dominio - Core]
-        Job[Entidad: Job]
-        JobRepoInterface[Interfaz: JobRepository]
-        ClientInterface[Interfaz: AnalysisServiceClient]
-    end
-
-    %% Relaciones de dependencia
-    Routes -->|Invoca| UC1
-    Routes -->|Invoca| UC2
-    
-    UC1 -->|Usa| JobRepoInterface
-    UC1 -->|Usa| ClientInterface
-    UC2 -->|Usa| JobRepoInterface
-    
-    DBRepo -->|Implementa| JobRepoInterface
-    HttpClient -->|Implementa| ClientInterface
-    
-    JobRepoInterface -->|Retorna| Job
-
-    style Dominio fill:#f9f,stroke:#333,stroke-width:2px,color:#000
-    style Aplicacion fill:#bbf,stroke:#333,stroke-width:2px,color:#000
-    style Interfaz_Infraestructura fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    Composition --> Presentation
+    Composition --> Application
+    Composition --> Api
+    Composition --> Storage
+    Presentation --> Domain
+    Application --> Domain
+    Application -. puertos inyectados .-> Api
+    Application -. puertos inyectados .-> Storage
+    Api --> PythonService((API Python))
 ```
 
-### C. Componente 3: Java Service (`java-service`)
+`App.jsx` actúa como Composition Root e inyecta los adaptadores externos al caso de uso React. La aplicación no importa directamente infraestructura.
+
+## 4. Capas del servicio Python
 
 ```mermaid
-graph TD
-    subgraph Java_Interfaz [Capa de Interfaz y Adaptadores]
-        Server[HttpServer Nativo<br/>JobController /process-job]
-        JDBCRepo[PostgresJobRepository<br/>JDBC queries]
-    end
+flowchart TB
+    Flask[Interfaz\nFlask routes + CORS]
+    UseCases[Aplicación\nSubmit, Get, Retry, Health]
+    Entity[Dominio\nJob]
+    Ports[Dominio\nJobRepository + AnalysisServiceClient]
+    Pg[Infraestructura\nPostgresJobRepository]
+    Http[Infraestructura\nHttpAnalysisServiceClient]
 
-    subgraph Java_Aplicacion [Capa de Aplicación - Casos de Uso]
-        UCJava[ProcessJobUseCase<br/>Sentiment Analysis & Keywords]
-    end
+    Flask --> UseCases
+    UseCases --> Entity
+    UseCases --> Ports
+    Pg -. implementa .-> Ports
+    Http -. implementa .-> Ports
+    Pg --> PostgreSQL[(PostgreSQL)]
+    Http --> JavaService((API Java))
+```
 
-    subgraph Java_Dominio [Capa de Dominio - Core]
-        JobJava[Entidad: Job]
-        JobRepoJavaInterface[Interfaz: JobRepository]
-    end
+## 5. Capas del servicio Java
 
-    %% Relaciones de dependencia
-    Server -->|Invoca en Hilo Asíncrono| UCJava
-    UCJava -->|Usa| JobRepoJavaInterface
-    JDBCRepo -->|Implementa| JobRepoJavaInterface
-    JobRepoJavaInterface -->|Manipula| JobJava
+```mermaid
+flowchart TB
+    Controllers[Interfaz\nJobController + HealthController]
+    UseCase[Aplicación\nProcessJobUseCase]
+    Entity[Dominio\nJob]
+    Port[Dominio\nJobRepository]
+    JDBC[Infraestructura\nPostgresJobRepository]
+    Pool[Infraestructura de ejecución\nThreadPool + cola acotada]
 
-    style Java_Dominio fill:#f9f,stroke:#333,stroke-width:2px,color:#000
-    style Java_Aplicacion fill:#bbf,stroke:#333,stroke-width:2px,color:#000
-    style Java_Interfaz fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    Controllers --> UseCase
+    Controllers --> Pool
+    UseCase --> Entity
+    UseCase --> Port
+    JDBC -. implementa .-> Port
+    JDBC --> PostgreSQL[(PostgreSQL)]
 ```

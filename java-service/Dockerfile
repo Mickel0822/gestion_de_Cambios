@@ -11,15 +11,19 @@ RUN mvn dependency:go-offline
 
 # Copiar el código fuente y compilar el jar ejecutable
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN mvn -B clean package
 
 # Etapa 2: Ejecución
 FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
+RUN addgroup -S app && adduser -S app -G app
+
 # Copiar el jar compilado desde la etapa de construcción
-COPY --from=build /app/target/java-service-1.0-SNAPSHOT.jar ./app.jar
+COPY --from=build --chown=app:app /app/target/java-service-1.0.0.jar ./app.jar
+
+USER app
 
 # Configuración del puerto
 ENV PORT=8080
