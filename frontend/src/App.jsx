@@ -74,6 +74,9 @@ function App() {
     e.preventDefault();
     if (!text.trim()) return;
 
+    const textToSend = text;
+    setText(''); // Desaparece del cuadro de texto al enviar a analizar
+
     setLoading(true);
     setPollingError(null);
     setJobDetails(null);
@@ -86,7 +89,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: textToSend }),
       });
 
       if (!response.ok) {
@@ -120,15 +123,45 @@ function App() {
     localStorage.removeItem('analyticore_history');
   };
 
+  // Determinar colores y estilos según el sentimiento para el diseño pastel premium
+  const getSentimentStyle = (sentiment) => {
+    if (sentiment === 'POSITIVO') {
+      return {
+        bg: '#f0fff4',
+        border: '2px solid #c6f6d5',
+        color: '#22543d',
+        shadow: '0 8px 20px -6px rgba(72, 187, 120, 0.2)',
+        icon: '😊'
+      };
+    } else if (sentiment === 'NEGATIVO') {
+      return {
+        bg: '#fff5f5',
+        border: '2px solid #fed7d7',
+        color: '#742a2a',
+        shadow: '0 8px 20px -6px rgba(245, 101, 101, 0.2)',
+        icon: '😢'
+      };
+    }
+    return {
+      bg: '#f7fafc',
+      border: '2px solid #e2e8f0',
+      color: '#4a5568',
+      shadow: '0 8px 20px -6px rgba(160, 174, 192, 0.2)',
+      icon: '😐'
+    };
+  };
+
+  const sentimentStyle = jobDetails ? getSentimentStyle(jobDetails.sentiment) : null;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
       {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--panel-border)' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1.2rem', borderBottom: '1px solid rgba(226, 232, 240, 0.8)' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '2.5rem' }}>
+          <h1 style={{ margin: 0, fontSize: '2.8rem', fontWeight: 800 }}>
             <span className="text-gradient">AnalytiCore</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '0.2rem', fontSize: '0.95rem' }}>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.3rem', fontSize: '1rem', fontWeight: 500 }}>
             Plataforma Cloud de Análisis de Sentimiento Políglota
           </p>
         </div>
@@ -138,11 +171,13 @@ function App() {
             onClick={() => setShowSettings(!showSettings)} 
             className="btn-primary" 
             style={{ 
-              background: 'rgba(255,255,255,0.05)', 
-              boxShadow: 'none', 
-              border: '1px solid var(--panel-border)',
-              padding: '0.5rem 1.2rem',
-              fontSize: '0.9rem'
+              background: 'rgba(255,255,255,0.8)', 
+              boxShadow: '0 4px 12px rgba(100, 116, 139, 0.08)', 
+              border: '1px solid rgba(226, 232, 240, 0.8)',
+              color: 'var(--text-secondary)',
+              padding: '0.6rem 1.4rem',
+              fontSize: '0.9rem',
+              fontWeight: 600
             }}
           >
             ⚙️ Configurar API
@@ -152,54 +187,49 @@ function App() {
 
       {/* Settings Modal (Inline) */}
       {showSettings && (
-        <div className="glass-panel" style={{ borderLeft: '3px solid var(--accent-cyan)' }}>
-          <h3 style={{ marginTop: 0 }}>Configurar Endpoint de la API (Python)</h3>
-          <form onSubmit={handleSaveApiUrl} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <div className="glass-panel" style={{ borderLeft: '4px solid var(--primary)', background: '#ffffff' }}>
+          <h3 style={{ marginTop: 0, color: 'var(--text-primary)', fontSize: '1.2rem' }}>Configurar Endpoint de la API (Python)</h3>
+          <form onSubmit={handleSaveApiUrl} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
             <input 
               type="text" 
               value={apiUrl} 
               onChange={(e) => setApiUrl(e.target.value)}
               placeholder="Ej. http://localhost:5000"
-              style={{
-                flex: 1,
-                minWidth: '280px',
-                background: 'rgba(10, 7, 20, 0.5)',
-                border: '1px solid var(--panel-border)',
-                borderRadius: '8px',
-                color: 'white',
-                padding: '0.8rem',
-                fontSize: '0.95rem',
-                outline: 'none'
-              }}
+              className="settings-input"
             />
-            <button type="submit" className="btn-primary" style={{ padding: '0.8rem 1.5rem' }}>Guardar</button>
+            <button type="submit" className="btn-primary" style={{ padding: '0.8rem 1.8rem' }}>Guardar</button>
             <button 
               type="button" 
               onClick={() => setShowSettings(false)} 
               className="btn-primary" 
-              style={{ background: 'transparent', border: '1px solid var(--panel-border)', boxShadow: 'none' }}
+              style={{ 
+                background: 'transparent', 
+                border: '1px solid rgba(226, 232, 240, 0.8)', 
+                color: 'var(--text-secondary)',
+                boxShadow: 'none' 
+              }}
             >
               Cancelar
             </button>
           </form>
-          <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: '0.5rem' }}>
+          <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: '0.6rem', fontSize: '0.85rem' }}>
             Apunta esta URL al servicio de Python. En local suele ser <code>http://localhost:5000</code>. En Render usa tu URL HTTPS.
           </small>
         </div>
       )}
 
       {/* Main Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7fr) minmax(0, 5fr)', gap: '2rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 8fr) minmax(0, 4fr)', gap: '2.5rem', alignItems: 'start' }}>
         
         {/* Left Side: Submission and Results */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
           
           {/* Submit Panel */}
           <section className="glass-panel">
-            <h2 style={{ fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>📝</span> Ingresar Texto para Análisis
+            <h2 style={{ fontSize: '1.45rem', display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-primary)', marginBottom: '1.2rem' }}>
+              Ingresar Texto para Análisis
             </h2>
-            <form onSubmit={handleSubmitAnalysis} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form onSubmit={handleSubmitAnalysis} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
               <textarea 
                 rows="6"
                 value={text}
@@ -208,16 +238,16 @@ function App() {
                 disabled={loading}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', color: text.length > 500 ? 'var(--accent-magenta)' : 'var(--text-muted)' }}>
+                <span style={{ fontSize: '0.85rem', color: text.length > 500 ? 'var(--color-error)' : 'var(--text-muted)', fontWeight: 500 }}>
                   Caracteres: {text.length}
                 </span>
                 <button 
                   type="submit" 
                   className="btn-primary" 
                   disabled={loading || !text.trim()}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}
                 >
-                  {loading && <span className="animate-spin">🔄</span>}
+                  {loading && <span className="animate-spin" style={{ fontSize: '1.1rem' }}>🌀</span>}
                   {loading ? 'Procesando...' : 'Iniciar Análisis Cloud'}
                 </button>
               </div>
@@ -226,9 +256,9 @@ function App() {
 
           {/* Results Panel */}
           {(jobDetails || loading || pollingError) && (
-            <section className="glass-panel" style={{ borderLeft: '4px solid var(--primary)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h2 style={{ fontSize: '1.4rem', margin: 0 }}>📊 Resultados del Trabajo #{currentJobId}</h2>
+            <section className="glass-panel" style={{ borderLeft: '5px solid var(--primary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.8rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <h2 style={{ fontSize: '1.45rem', margin: 0, color: 'var(--text-primary)' }}>Análisis número {currentJobId}</h2>
                 {jobDetails && (
                   <span className={`badge badge-${jobDetails.status.toLowerCase()}`}>
                     {jobDetails.status === 'PENDIENTE' && '⏳ Pendiente'}
@@ -240,36 +270,44 @@ function App() {
 
               {/* Error messages */}
               {pollingError && (
-                <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '1rem', color: 'var(--color-error)', fontSize: '0.95rem' }}>
-                  <strong>Error:</strong> {pollingError}
+                <div style={{ 
+                  background: '#fff5f5', 
+                  border: '1px solid #fed7d7', 
+                  borderRadius: '14px', 
+                  padding: '1.2rem', 
+                  color: '#c53030', 
+                  fontSize: '0.95rem',
+                  boxShadow: '0 4px 12px rgba(229, 62, 62, 0.05)'
+                }}>
+                  <strong style={{ fontWeight: 700 }}>Error:</strong> {pollingError}
                 </div>
               )}
 
               {/* Loading States */}
               {loading && !jobDetails && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem 0' }}>
-                  <div className="animate-spin" style={{ fontSize: '2.5rem' }}>🌀</div>
-                  <p className="animate-pulse" style={{ color: 'var(--text-secondary)' }}>Enviando trabajo a los servicios en la nube...</p>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.2rem', padding: '2.5rem 0' }}>
+                  <div className="animate-spin" style={{ fontSize: '2.8rem' }}>🌀</div>
+                  <p className="animate-pulse" style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Enviando trabajo a los servicios en la nube...</p>
                 </div>
               )}
 
               {/* Detailed Progress */}
               {jobDetails && (jobDetails.status === 'PENDIENTE' || jobDetails.status === 'PROCESANDO') && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem 0' }}>
-                  <div className="animate-spin" style={{ fontSize: '2.5rem', color: jobDetails.status === 'PROCESANDO' ? 'var(--color-processing)' : 'var(--color-pending)' }}>⚙️</div>
-                  <p className="animate-pulse" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                    {jobDetails.status === 'PENDIENTE' && 'Trabajo registrado en Python. Esperando que el microservicio Java lo recoja...'}
-                    {jobDetails.status === 'PROCESANDO' && 'El microservicio Java está analizando el texto...'}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.2rem', padding: '2.5rem 0' }}>
+                  <div className="animate-spin" style={{ fontSize: '2.8rem', color: jobDetails.status === 'PROCESANDO' ? 'var(--color-processing)' : 'var(--color-pending)' }}>⚙️</div>
+                  <p className="animate-pulse" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 500, maxWidth: '80%' }}>
+                    {jobDetails.status === 'PENDIENTE' && 'Trabajo registrado en Python. Esperando que el microservicio Java lo procese...'}
+                    {jobDetails.status === 'PROCESANDO' && 'El microservicio Java está analizando el texto y extrayendo keywords...'}
                   </p>
-                  <div style={{ width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', height: '8px', overflow: 'hidden' }}>
+                  <div style={{ width: '80%', background: 'rgba(0,0,0,0.05)', borderRadius: '10px', height: '10px', overflow: 'hidden', marginTop: '0.5rem' }}>
                     <div 
                       className="animate-pulse" 
                       style={{ 
-                        width: jobDetails.status === 'PENDIENTE' ? '30%' : '70%', 
+                        width: jobDetails.status === 'PENDIENTE' ? '35%' : '75%', 
                         height: '100%', 
-                        background: 'linear-gradient(90deg, var(--accent-cyan) 0%, var(--primary) 100%)',
-                        borderRadius: '8px',
-                        transition: 'width 0.5s ease'
+                        background: 'linear-gradient(90deg, #a9a2fc 0%, var(--primary) 100%)',
+                        borderRadius: '10px',
+                        transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
                       }} 
                     />
                   </div>
@@ -278,51 +316,68 @@ function App() {
 
               {/* Completed Results */}
               {jobDetails && jobDetails.status === 'COMPLETADO' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
                   
-                  {/* Sentiment Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+                  {/* Sentiment Cards - Pastel Redesign */}
+                  {sentimentStyle && (
                     <div style={{ 
-                      background: 'rgba(255,255,255,0.02)', 
-                      border: '1px solid var(--panel-border)', 
-                      borderRadius: '12px', 
-                      padding: '1rem', 
+                      background: sentimentStyle.bg, 
+                      border: sentimentStyle.border, 
+                      borderRadius: '16px', 
+                      padding: '1.5rem', 
                       textAlign: 'center',
-                      borderTop: `3px solid ${
-                        jobDetails.sentiment === 'POSITIVO' ? 'var(--color-completed)' :
-                        jobDetails.sentiment === 'NEGATIVO' ? 'var(--color-error)' : 'var(--text-secondary)'
-                      }`
+                      boxShadow: sentimentStyle.shadow,
+                      transition: 'all 0.3s ease'
                     }}>
-                      <small style={{ color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 600 }}>Sentimiento</small>
+                      <small style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.08em' }}>
+                        Sentimiento Detectado
+                      </small>
                       <h3 style={{ 
-                        margin: '0.5rem 0 0 0', 
-                        fontSize: '1.5rem',
-                        color: jobDetails.sentiment === 'POSITIVO' ? 'var(--color-completed)' :
-                              jobDetails.sentiment === 'NEGATIVO' ? 'var(--color-error)' : 'var(--text-secondary)'
+                        margin: '0.6rem 0 0 0', 
+                        fontSize: '2.2rem',
+                        fontWeight: 800,
+                        color: sentimentStyle.color,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.8rem'
                       }}>
-                        {jobDetails.sentiment || 'NEUTRO'}
+                        <span>{sentimentStyle.icon}</span>
+                        <span>{jobDetails.sentiment || 'NEUTRO'}</span>
                       </h3>
                     </div>
-                  </div>
+                  )}
 
                   {/* Original Text */}
                   <div>
-                    <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Texto Analizado:</h4>
-                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--panel-border)', fontSize: '0.95rem', maxHeight: '150px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                    <h4 style={{ margin: '0 0 0.6rem 0', color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: 600 }}>Texto Analizado:</h4>
+                    <div style={{ 
+                      background: '#ffffff', 
+                      padding: '1.2rem', 
+                      borderRadius: '12px', 
+                      border: '1px solid rgba(226, 232, 240, 0.8)', 
+                      fontSize: '0.95rem', 
+                      color: 'var(--text-primary)',
+                      lineHeight: '1.6',
+                      maxHeight: '180px', 
+                      overflowY: 'auto', 
+                      whiteSpace: 'pre-wrap',
+                      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.02)'
+                    }}>
                       {jobDetails.text}
                     </div>
                   </div>
 
                   {/* Keyword Tags */}
                   <div>
-                    <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Palabras Clave Extraídas (Java):</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h4 style={{ margin: '0 0 0.8rem 0', color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: 600 }}>Palabras Clave Extraídas (Java):</h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
                       {jobDetails.keywords && jobDetails.keywords.length > 0 ? (
                         jobDetails.keywords.map((kw, idx) => (
                           <span key={idx} className="keyword-tag">{kw}</span>
                         ))
                       ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>No se extrajeron palabras clave.</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>No se extrajeron palabras clave de valor.</span>
                       )}
                     </div>
                   </div>
@@ -334,17 +389,28 @@ function App() {
 
         </div>
 
-        {/* Right Side: Sidebar History / Architecture Info */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        {/* Right Side: Sidebar History */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
           
           {/* History Panel */}
           <section className="glass-panel" style={{ height: 'fit-content' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.4rem', margin: 0 }}>⏱️ Trabajos Recientes</h2>
+              <h2 style={{ fontSize: '1.35rem', margin: 0, color: 'var(--text-primary)', fontWeight: 700 }}>Trabajos Recientes</h2>
               {jobHistory.length > 0 && (
                 <button 
                   onClick={clearHistory}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--color-error)', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  style={{ 
+                    background: 'transparent', 
+                    border: 'none', 
+                    color: 'var(--text-secondary)', 
+                    fontSize: '0.85rem', 
+                    fontWeight: 600,
+                    cursor: 'pointer', 
+                    textDecoration: 'underline',
+                    transition: 'color 0.2s'
+                  }}
+                  onMouseOver={(e) => e.target.style.color = '#c53030'}
+                  onMouseOut={(e) => e.target.style.color = 'var(--text-secondary)'}
                 >
                   Limpiar
                 </button>
@@ -352,11 +418,11 @@ function App() {
             </div>
 
             {jobHistory.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', fontStyle: 'italic', textAlign: 'center', padding: '2rem 0' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', fontStyle: 'italic', textAlign: 'center', padding: '2.5rem 0' }}>
                 Aún no has procesado ningún texto.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '350px', overflowY: 'auto', paddingRight: '0.2rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', maxHeight: '420px', overflowY: 'auto', overflowX: 'hidden', paddingRight: '0.2rem' }}>
                 {jobHistory.map((job) => (
                   <div 
                     key={job.id} 
@@ -366,47 +432,28 @@ function App() {
                       display: 'flex', 
                       justifyContent: 'space-between', 
                       alignItems: 'center', 
-                      padding: '0.8rem', 
-                      borderRadius: '10px', 
+                      padding: '0.9rem 1.1rem', 
+                      borderRadius: '12px', 
                       cursor: 'pointer',
-                      background: currentJobId === job.id ? 'rgba(143, 59, 255, 0.1)' : 'rgba(255,255,255,0.02)',
-                      borderColor: currentJobId === job.id ? 'var(--primary)' : 'var(--panel-border)'
+                      background: currentJobId === job.id ? 'rgba(139, 128, 249, 0.12)' : 'rgba(255,255,255,0.55)',
+                      borderColor: currentJobId === job.id ? 'var(--primary)' : 'rgba(226, 232, 240, 0.8)',
+                      boxShadow: currentJobId === job.id ? '0 4px 12px rgba(139, 128, 249, 0.1)' : 'none',
+                      transition: 'all 0.25s ease'
                     }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', overflow: 'hidden', flex: 1, paddingRight: '1rem' }}>
-                      <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>Trabajo #{job.id}</strong>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', overflow: 'hidden', flex: 1, paddingRight: '1rem' }}>
+                      <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 700 }}>Trabajo #{job.id}</strong>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {job.text}
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>
                       {job.date}
                     </span>
                   </div>
                 ))}
               </div>
             )}
-          </section>
-
-          {/* Architecture Information */}
-          <section className="glass-panel" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            <h3 style={{ fontSize: '1.2rem', color: 'white', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
-              💡 Información de la Arquitectura
-            </h3>
-            <ul style={{ paddingLeft: '1.2rem', margin: '1rem 0 0 0', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <li>
-                <strong>Frontend:</strong> React + Vite, optimizado y servido bajo Nginx.
-              </li>
-              <li>
-                <strong>Orquestador (Python):</strong> Registra trabajos en base de datos PostgreSQL, llama a Java y maneja las consultas periódicas de estado.
-              </li>
-              <li>
-                <strong>Procesador (Java):</strong> Extrae palabras clave y realiza el análisis de sentimiento directamente sobre la persistencia.
-              </li>
-              <li>
-                <strong>Base de datos:</strong> PostgreSQL centralizada, compartida por ambos servicios en la nube.
-              </li>
-            </ul>
           </section>
 
         </div>
