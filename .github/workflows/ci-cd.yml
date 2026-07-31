@@ -118,12 +118,12 @@ jobs:
             VITE_MAX_TEXT_LENGTH=5000
             VITE_RETRY_AFTER_SECONDS=120
       - name: Seguridad - Trivy (imagen)
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '1'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin v0.65.0
+          trivy image --no-progress --ignore-unfixed \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            "${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}"
       - name: Publicar en GHCR
         if: github.event_name != 'pull_request'
         run: |
@@ -166,12 +166,12 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
       - name: Seguridad - Trivy (imagen)
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '1'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin v0.65.0
+          trivy image --no-progress --ignore-unfixed \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            "${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}"
       - name: Publicar en GHCR
         if: github.event_name != 'pull_request'
         run: |
@@ -218,12 +218,12 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
       - name: Seguridad - Trivy (imagen)
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '1'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin v0.65.0
+          trivy image --no-progress --ignore-unfixed \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            "${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}"
       - name: Publicar en GHCR
         if: github.event_name != 'pull_request'
         run: |
