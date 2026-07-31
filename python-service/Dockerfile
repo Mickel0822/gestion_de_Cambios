@@ -5,12 +5,18 @@ WORKDIR /app
 RUN addgroup --system app && adduser --system --ingroup app app
 
 COPY requirements.txt .
-# Parchear herramientas de build y luego retirarlas: la imagen de runtime no las
-# necesita (gunicorn 26 no usa setuptools/pkg_resources). Elimina 2 HIGH de Trivy
-# (jaraco.context en setuptools/_vendor y wheel).
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+# La imagen de runtime no necesita herramientas de build (gunicorn 26 no usa
+# setuptools/pkg_resources). Se instalan las dependencias (wheels binarios) y
+# luego se retiran setuptools/wheel de site-packages y los wheels que Python
+# trae empaquetados en ensurepip/_bundled, que Trivy tambien escanea. Elimina
+# los HIGH de la imagen base (p.ej. setuptools CVE-2025-47273).
+RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
-    && pip uninstall -y setuptools wheel
+    && pip uninstall -y setuptools wheel 2>/dev/null || true \
+    && rm -rf /usr/local/lib/python3.11/ensurepip \
+       /usr/local/lib/python3.11/site-packages/setuptools* \
+       /usr/local/lib/python3.11/site-packages/pkg_resources* \
+       /usr/local/lib/python3.11/site-packages/wheel*
 
 # Copiar la aplicación y estructura de arquitectura limpia
 COPY --chown=app:app src/ ./src
