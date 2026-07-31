@@ -5,7 +5,12 @@ WORKDIR /app
 RUN addgroup --system app && adduser --system --ingroup app app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Parchear herramientas de build y luego retirarlas: la imagen de runtime no las
+# necesita (gunicorn 26 no usa setuptools/pkg_resources). Elimina 2 HIGH de Trivy
+# (jaraco.context en setuptools/_vendor y wheel).
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y setuptools wheel
 
 # Copiar la aplicación y estructura de arquitectura limpia
 COPY --chown=app:app src/ ./src
