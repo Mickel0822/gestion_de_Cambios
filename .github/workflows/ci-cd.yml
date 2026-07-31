@@ -29,9 +29,9 @@ jobs:
     name: Detectar servicios modificados
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      python: ${{ steps.filter.outputs.python }}
-      java: ${{ steps.filter.outputs.java }}
+      frontend: ${{ steps.decide.outputs.frontend }}
+      python: ${{ steps.decide.outputs.python }}
+      java: ${{ steps.decide.outputs.java }}
       owner_lc: ${{ steps.owner.outputs.lc }}
       sha_tag: ${{ steps.tag.outputs.sha }}
     steps:
@@ -39,6 +39,7 @@ jobs:
       - name: Filtrar rutas por servicio
         uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             frontend:
@@ -47,6 +48,18 @@ jobs:
               - 'python-service/**'
             java:
               - 'java-service/**'
+      - name: Decidir servicios (disparo manual = todos)
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "python=true"   >> "$GITHUB_OUTPUT"
+            echo "java=true"     >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> "$GITHUB_OUTPUT"
+            echo "python=${{ steps.filter.outputs.python }}"     >> "$GITHUB_OUTPUT"
+            echo "java=${{ steps.filter.outputs.java }}"         >> "$GITHUB_OUTPUT"
+          fi
       - name: Owner en minusculas (GHCR)
         id: owner
         run: echo "lc=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
@@ -112,7 +125,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
       - name: Publicar en GHCR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
           docker push ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
@@ -160,7 +173,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
       - name: Publicar en GHCR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
           docker push ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
@@ -212,7 +225,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
       - name: Publicar en GHCR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
           docker push ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
