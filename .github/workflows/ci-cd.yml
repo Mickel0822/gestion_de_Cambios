@@ -257,10 +257,10 @@ jobs:
   deploy-production:
     name: Aprobacion y despliegue a produccion
     needs: [detect-changes, staging]
-    if: >-
-      ${{ github.event_name == 'push'
-        && github.ref == 'refs/heads/main'
-        && needs.staging.result == 'success' }}
+    # !cancelled() desactiva el auto-skip de GitHub cuando algun ci-* upstream
+    # quedo skipped (cambio de un solo servicio); asi el gate de aprobacion se
+    # alcanza siempre que staging haya pasado en un push a main.
+    if: ${{ !cancelled() && needs.staging.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment: production   # Puerta de aprobacion manual (GitHub Environments)
     env:
