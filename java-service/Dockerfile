@@ -18,7 +18,10 @@ FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
-RUN addgroup -S app && adduser -S app -G app
+# Actualizar paquetes de Alpine a versiones parcheadas (libexpat, p11-kit, etc.)
+# para eliminar los HIGH que Trivy detecta en la imagen base.
+RUN apk upgrade --no-cache \
+    && addgroup -S app && adduser -S app -G app
 
 # Copiar el jar compilado desde la etapa de construcción
 COPY --from=build --chown=app:app /app/target/java-service-1.0.0.jar ./app.jar
