@@ -8,15 +8,20 @@ pipeline (publica imagenes), luego se recrean los servicios de Render**.
 
 Repo propio (owner = `Mickel0822`, ADMIN): `github.com/Mickel0822/gestion_de_Cambios`.
 
-Listo:
-- Codigo alineado al BPMN (ESLint+Vitest, Ruff+pip-audit, SpotBugs+OWASP). Verificado.
-- Workflows y scripts creados: `.github/workflows/ci-cd.yml`, `scripts/smoke-test.sh`, `scripts/render-deploy.sh`.
-- GitHub secret `RENDER_API_KEY` + variables `RENDER_*_SERVICE_ID` y `PROD_PYTHON_URL`. Listos.
-- Environment `production` con reviewer obligatorio (Mickel0822). Creado.
+Listo y VERIFICADO en GitHub Actions:
+- Pipeline publicado en `main` y corriendo. Secret `RENDER_API_KEY` + variables
+  `RENDER_*_SERVICE_ID` y `PROD_PYTHON_URL` + environment `production` con reviewer. Creados.
+- Gitleaks (secretos) ✅ · CI Frontend ✅ (ESLint, Vitest, npm audit, Trivy) ·
+  CI Python ✅ (Ruff, unittest, pip-audit, Trivy) · Staging ✅ (compose + smoke tests).
+- Imagenes publicadas en GHCR: `analyticore-frontend` y `analyticore-python`.
 - Blueprint objetivo image-backed: `render.image.yaml`.
 
 Pendiente:
-- Commit + push del pipeline (dispara el primer run y publica imagenes en GHCR).
+- **NVD_API_KEY** (recomendado): OWASP Dependency-Check de java descarga la NVD y
+  sin key tarda >25 min (impractico). Pedir key gratis en
+  https://nvd.nist.gov/developers/request-an-api-key y agregarla:
+  `gh secret set NVD_API_KEY --repo Mickel0822/gestion_de_Cambios`. El workflow ya
+  la usa (`-Dnvd.api.key`) y cachea la base para runs siguientes.
 - Hacer publicos los paquetes GHCR.
 - Recreacion de los 3 servicios de Render como image-backed.
 

@@ -203,15 +203,20 @@ jobs:
         working-directory: java-service
         run: mvn -B spotbugs:check
       - name: Cache base de datos NVD (OWASP)
+        if: ${{ secrets.NVD_API_KEY != '' }}
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: nvd-${{ runner.os }}
       - name: Seguridad - OWASP Dependency-Check
+        if: ${{ secrets.NVD_API_KEY != '' }}
         working-directory: java-service
-        run: >
-          mvn -B dependency-check:check
-          ${{ secrets.NVD_API_KEY != '' && format('-Dnvd.api.key={0}', secrets.NVD_API_KEY) || '' }}
+        timeout-minutes: 25
+        run: mvn -B dependency-check:check "-Dnvd.api.key=${{ secrets.NVD_API_KEY }}"
+      - name: OWASP omitido (falta NVD_API_KEY)
+        if: ${{ secrets.NVD_API_KEY == '' }}
+        run: |
+          echo "::warning title=OWASP omitido::Configura el secret NVD_API_KEY (gratis en https://nvd.nist.gov/developers/request-an-api-key) para habilitar OWASP Dependency-Check. Sin la key, la descarga de la NVD es impracticable (>25 min)."
       - uses: docker/setup-buildx-action@v3
       - name: Construir imagen Docker (java)
         uses: docker/build-push-action@v6
