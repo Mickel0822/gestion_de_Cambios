@@ -213,7 +213,7 @@ jobs:
         if: env.NVD_API_KEY != ''
         working-directory: java-service
         timeout-minutes: 25
-        run: mvn -B dependency-check:check "-Dnvd.api.key=$NVD_API_KEY"
+        run: mvn -B dependency-check:check   # el pom lee la key de ${env.NVD_API_KEY}
       - name: OWASP omitido (falta NVD_API_KEY)
         if: env.NVD_API_KEY == ''
         run: |

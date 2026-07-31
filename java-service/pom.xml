@@ -53,7 +53,8 @@
                         <format>HTML</format>
                         <format>SARIF</format>
                     </formats>
-                    <nvdApiDelay>6000</nvdApiDelay>
+                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                    <nvdApiDelay>2000</nvdApiDelay>
                 </configuration>
             </plugin>
         </plugins>
