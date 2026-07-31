@@ -8,22 +8,25 @@ pipeline (publica imagenes), luego se recrean los servicios de Render**.
 
 Repo propio (owner = `Mickel0822`, ADMIN): `github.com/Mickel0822/gestion_de_Cambios`.
 
-Listo y VERIFICADO en GitHub Actions:
-- Pipeline publicado en `main` y corriendo. Secret `RENDER_API_KEY` + variables
-  `RENDER_*_SERVICE_ID` y `PROD_PYTHON_URL` + environment `production` con reviewer. Creados.
-- Gitleaks (secretos) ✅ · CI Frontend ✅ (ESLint, Vitest, npm audit, Trivy) ·
-  CI Python ✅ (Ruff, unittest, pip-audit, Trivy) · Staging ✅ (compose + smoke tests).
-- Imagenes publicadas en GHCR: `analyticore-frontend` y `analyticore-python`.
+Pipeline VERIFICADO 100% verde en GitHub Actions (run completo en `main`):
+- Gitleaks ✅ · CI Frontend ✅ (ESLint, Vitest, npm audit, Trivy) · CI Python ✅
+  (Ruff, unittest, pip-audit, Trivy) · CI Java ✅ (Maven, JUnit, SpotBugs, OWASP, Trivy) ·
+  Staging ✅ (compose + smoke tests).
+- Las 3 imagenes publicadas en GHCR: `analyticore-frontend`, `analyticore-python`, `analyticore-java`.
+- Secret `RENDER_API_KEY` + `NVD_API_KEY` + variables `RENDER_*_SERVICE_ID` y
+  `PROD_PYTHON_URL` + environment `production` con reviewer. Creados.
 - Blueprint objetivo image-backed: `render.image.yaml`.
 
-Pendiente:
-- **NVD_API_KEY** (recomendado): OWASP Dependency-Check de java descarga la NVD y
-  sin key tarda >25 min (impractico). Pedir key gratis en
-  https://nvd.nist.gov/developers/request-an-api-key y agregarla:
-  `gh secret set NVD_API_KEY --repo Mickel0822/gestion_de_Cambios`. El workflow ya
-  la usa (`-Dnvd.api.key`) y cachea la base para runs siguientes.
+Notas de seguridad:
+- OWASP Dependency-Check es NO-BLOQUEANTE (`continue-on-error`): NVD rate-limita la
+  IP compartida de los runners (403 aunque la key sea valida). Corre y reporta;
+  Trivy es el gate duro. Se vuelve bloqueante con la cache NVD poblada o runner dedicado.
+- Trivy: se parcharon las imagenes base (python: purga pip/setuptools; java: apk upgrade).
+
+Pendiente (solo Render):
 - Hacer publicos los paquetes GHCR.
-- Recreacion de los 3 servicios de Render como image-backed.
+- Recrear los 3 servicios de Render como image-backed.
+- El gate `deploy-production` se confirma en el primer push de servicio a main.
 
 ---
 
