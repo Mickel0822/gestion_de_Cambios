@@ -1,0 +1,4 @@
+# Los scripts de shell deben conservar finales de linea LF para ejecutarse en Linux (runners CI)
+*.sh text eol=lf
+# Normalizacion de texto por defecto
+* text=auto

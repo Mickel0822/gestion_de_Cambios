@@ -1,0 +1,100 @@
+# ==========================================================================
+# Blueprint OBJETIVO (image-backed) para el pipeline CI/CD DevSecOps.
+# NO se auto-aplica: Render solo detecta "render.yaml". Este archivo es la
+# version destino que se aplicara MAÑANA (ver RUNBOOK-DESPLIEGUE.md), cuando
+# las imagenes ya existan en GHCR tras el primer run del pipeline.
+#
+# Diferencia con render.yaml (actual): en vez de construir desde Dockerfile,
+# cada servicio DESPLIEGA una imagen ya construida, escaneada y publicada por
+# el pipeline en GHCR. El pipeline luego despliega el tag inmutable (sha-xxxx)
+# de cada servicio via API de Render.
+#
+# Requisitos previos:
+#   - Imagenes publicadas: ghcr.io/mickel0822/analyticore-{frontend,python,java}
+#   - Paquetes GHCR PUBLICOS  (o credencial PAT read:packages en Render)
+#   - Recrear los 3 servicios (cambian de URL). La base de datos NO se toca.
+# ==========================================================================
+services:
+  - type: web
+    name: analyticore-java
+    runtime: image
+    plan: free
+    image:
+      url: ghcr.io/mickel0822/analyticore-java:latest
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: analyticore-db
+          property: connectionString
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      - key: PORT
+        value: 8080
+      - key: WORKER_THREADS
+        value: 2
+      - key: WORKER_QUEUE_CAPACITY
+        value: 50
+
+  - type: web
+    name: analyticore-python
+    runtime: image
+    plan: free
+    image:
+      url: ghcr.io/mickel0822/analyticore-python:latest
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: analyticore-db
+          property: connectionString
+      - key: JAVA_SERVICE_URL
+        fromService:
+          type: web
+          name: analyticore-java
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+      - key: INTERNAL_API_KEY
+        fromService:
+          type: web
+          name: analyticore-java
+          envVarKey: INTERNAL_API_KEY
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: web
+          name: analyticore-frontend
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+      - key: MAX_TEXT_LENGTH
+        value: 5000
+      - key: MAX_REQUEST_BYTES
+        value: 65536
+      - key: NOTIFY_MAX_ATTEMPTS
+        value: 5
+      - key: NOTIFY_TIMEOUT_SECONDS
+        value: 12
+      - key: RETRY_AFTER_SECONDS
+        value: 120
+      - key: WEB_CONCURRENCY
+        value: 2
+      - key: GUNICORN_TIMEOUT_SECONDS
+        value: 180
+
+  # NOTA: el frontend hornea VITE_API_URL en tiempo de BUILD (en el pipeline),
+  # no aqui. Por eso la variable PROD_PYTHON_URL del repo debe apuntar a la URL
+  # final de analyticore-python ANTES de construir/publicar su imagen.
+  - type: web
+    name: analyticore-frontend
+    runtime: image
+    plan: free
+    image:
+      url: ghcr.io/mickel0822/analyticore-frontend:latest
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 8080
+
+databases:
+  - name: analyticore-db
+    plan: free
+    databaseName: analyticore
+    user: analyticore
+    ipAllowList: []

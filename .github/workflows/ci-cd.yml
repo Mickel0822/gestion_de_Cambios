@@ -1,0 +1,263 @@
+name: CI/CD DevSecOps AnalytiCore
+
+# Pipeline fiel al BPMN: deteccion de cambios -> secretos -> CI por servicio
+# (calidad, seguridad, build, escaneo, publicacion GHCR) -> staging efimero ->
+# aprobacion manual -> despliegue a Render (prod) con health check y rollback.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ----- Carril GitHub Actions: deteccion + secretos -----
+  detect-changes:
+    name: Detectar servicios modificados
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      python: ${{ steps.filter.outputs.python }}
+      java: ${{ steps.filter.outputs.java }}
+      owner_lc: ${{ steps.owner.outputs.lc }}
+      sha_tag: ${{ steps.tag.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Filtrar rutas por servicio
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            python:
+              - 'python-service/**'
+            java:
+              - 'java-service/**'
+      - name: Owner en minusculas (GHCR)
+        id: owner
+        run: echo "lc=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      - name: Tag inmutable por commit
+        id: tag
+        run: echo "sha=sha-$(echo '${{ github.sha }}' | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+  secret-scan:
+    name: Escaneo de secretos (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----- Carril CI independiente: Frontend React -----
+  ci-frontend:
+    name: CI Frontend (React)
+    needs: [detect-changes, secret-scan]
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ needs.detect-changes.outputs.owner_lc }}/analyticore-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependencias (npm ci)
+        working-directory: frontend
+        run: npm ci
+      - name: Calidad - ESLint
+        working-directory: frontend
+        run: npm run lint
+      - name: Pruebas - Vitest
+        working-directory: frontend
+        run: npm test
+      - name: Seguridad - npm audit (solo runtime)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen Docker (frontend)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
+          build-args: |
+            VITE_API_URL=${{ vars.PROD_PYTHON_URL }}
+            VITE_MAX_TEXT_LENGTH=5000
+            VITE_RETRY_AFTER_SECONDS=120
+      - name: Seguridad - Trivy (imagen)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Publicar en GHCR
+        if: github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+          docker push ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
+          docker push ${{ env.IMAGE }}:latest
+
+  # ----- Carril CI independiente: Servicio Python -----
+  ci-python:
+    name: CI Python (Flask)
+    needs: [detect-changes, secret-scan]
+    if: needs.detect-changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ needs.detect-changes.outputs.owner_lc }}/analyticore-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: python-service/requirements-dev.txt
+      - name: Instalar dependencias (pip)
+        working-directory: python-service
+        run: pip install -r requirements-dev.txt
+      - name: Calidad - Ruff
+        working-directory: python-service
+        run: ruff check .
+      - name: Pruebas - unittest
+        working-directory: python-service
+        run: python -m unittest discover -s tests -v
+      - name: Seguridad - pip-audit (dependencias runtime)
+        working-directory: python-service
+        run: pip-audit -r requirements.txt
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen Docker (python)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./python-service
+          load: true
+          tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
+      - name: Seguridad - Trivy (imagen)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Publicar en GHCR
+        if: github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+          docker push ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
+          docker push ${{ env.IMAGE }}:latest
+
+  # ----- Carril CI independiente: Servicio Java -----
+  ci-java:
+    name: CI Java (Maven)
+    needs: [detect-changes, secret-scan]
+    if: needs.detect-changes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ needs.detect-changes.outputs.owner_lc }}/analyticore-java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Compilar y probar (Maven + JUnit)
+        working-directory: java-service
+        run: mvn -B clean test compile
+      - name: Calidad - SpotBugs
+        working-directory: java-service
+        run: mvn -B spotbugs:check
+      - name: Cache base de datos NVD (OWASP)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: nvd-${{ runner.os }}
+      - name: Seguridad - OWASP Dependency-Check
+        working-directory: java-service
+        run: >
+          mvn -B dependency-check:check
+          ${{ secrets.NVD_API_KEY != '' && format('-Dnvd.api.key={0}', secrets.NVD_API_KEY) || '' }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Construir imagen Docker (java)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./java-service
+          load: true
+          tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
+      - name: Seguridad - Trivy (imagen)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Publicar en GHCR
+        if: github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+          docker push ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
+          docker push ${{ env.IMAGE }}:latest
+
+  # ----- Carril Render Staging: entorno efimero + smoke/integral -----
+  staging:
+    name: Staging efimero + smoke tests
+    needs: [detect-changes, secret-scan, ci-frontend, ci-python, ci-java]
+    if: >-
+      ${{ always()
+        && needs.secret-scan.result == 'success'
+        && needs.ci-frontend.result != 'failure'
+        && needs.ci-python.result != 'failure'
+        && needs.ci-java.result != 'failure'
+        && (needs.detect-changes.outputs.frontend == 'true'
+            || needs.detect-changes.outputs.python == 'true'
+            || needs.detect-changes.outputs.java == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Levantar stack y ejecutar smoke + prueba integral
+        run: bash scripts/smoke-test.sh
+
+  # ----- Carril Aprobacion + Render Produccion -----
+  deploy-production:
+    name: Aprobacion y despliegue a produccion
+    needs: [detect-changes, staging]
+    if: >-
+      ${{ github.event_name == 'push'
+        && github.ref == 'refs/heads/main'
+        && needs.staging.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production   # Puerta de aprobacion manual (GitHub Environments)
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      IMG_BASE: ghcr.io/${{ needs.detect-changes.outputs.owner_lc }}
+      TAG: ${{ needs.detect-changes.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Desplegar Frontend (si cambio)
+        if: needs.detect-changes.outputs.frontend == 'true'
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_FRONTEND_SERVICE_ID }}" "${IMG_BASE}/analyticore-frontend:${TAG}" "/"
+      - name: Desplegar Python (si cambio)
+        if: needs.detect-changes.outputs.python == 'true'
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_PYTHON_SERVICE_ID }}" "${IMG_BASE}/analyticore-python:${TAG}" "/health"
+      - name: Desplegar Java (si cambio)
+        if: needs.detect-changes.outputs.java == 'true'
+        run: bash scripts/render-deploy.sh "${{ vars.RENDER_JAVA_SERVICE_ID }}" "${IMG_BASE}/analyticore-java:${TAG}" "/health"

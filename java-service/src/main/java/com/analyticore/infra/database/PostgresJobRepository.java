@@ -11,7 +11,7 @@ import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.Properties;
 
-public class PostgresJobRepository implements JobRepository {
+public final class PostgresJobRepository implements JobRepository {
     private final String jdbcUrl;
     private final Properties connectionProperties;
 

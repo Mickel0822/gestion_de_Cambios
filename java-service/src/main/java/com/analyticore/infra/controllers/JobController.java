@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
-public class JobController implements HttpHandler {
+public final class JobController implements HttpHandler {
     private final ProcessJobUseCase useCase;
     private final ExecutorService workerPool;
     private final String internalApiKey;

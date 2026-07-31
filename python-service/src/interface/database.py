@@ -1,4 +1,3 @@
-from typing import Dict, Optional
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -37,7 +36,7 @@ class PostgresJobRepository(JobRepository):
                 )
             """)
             cursor.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS error_message TEXT")
-            cursor.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+            cursor.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")  # noqa: E501
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
         connection.commit()
         self.table_created = True
@@ -70,10 +69,10 @@ class PostgresJobRepository(JobRepository):
                 job.updated_at = row['updated_at']
         return job
 
-    def get_by_id(self, job_id: int) -> Optional[Job]:
+    def get_by_id(self, job_id: int) -> Job | None:
         with self._get_connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id, text, status, sentiment, keywords, error_message, created_at, updated_at FROM jobs WHERE id = %s",
+                "SELECT id, text, status, sentiment, keywords, error_message, created_at, updated_at FROM jobs WHERE id = %s",  # noqa: E501
                 (job_id,),
             )
             row = cursor.fetchone()
@@ -83,7 +82,7 @@ class PostgresJobRepository(JobRepository):
                    keywords=row['keywords'], error_message=row['error_message'], created_at=row['created_at'],
                    updated_at=row['updated_at'])
 
-    def claim_for_retry(self, job_id: int, retry_before) -> Optional[Job]:
+    def claim_for_retry(self, job_id: int, retry_before) -> Job | None:
         with self._get_connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """UPDATE jobs
@@ -102,7 +101,7 @@ class PostgresJobRepository(JobRepository):
                    keywords=row['keywords'], error_message=row['error_message'], created_at=row['created_at'],
                    updated_at=row['updated_at'])
 
-    def check_health(self) -> Dict:
+    def check_health(self) -> dict:
         with self._get_connection() as connection, connection.cursor() as cursor:
             cursor.execute('SELECT version(), NOW()')
             result = cursor.fetchone()

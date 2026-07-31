@@ -1,18 +1,17 @@
 from datetime import datetime
-from typing import Optional
 
 
 class Job:
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         text: str,
         status: str = "PENDIENTE",
-        sentiment: Optional[str] = None,
-        keywords: Optional[str] = None,
-        error_message: Optional[str] = None,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None,
+        sentiment: str | None = None,
+        keywords: str | None = None,
+        error_message: str | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
     ):
         self.id = id
         self.text = text

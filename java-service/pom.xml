@@ -28,6 +28,34 @@
                     <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"><mainClass>com.analyticore.Main</mainClass></transformer></transformers>
                 </configuration></execution></executions>
             </plugin>
+
+            <!-- SpotBugs: analisis estatico de defectos (invocado en CI con `mvn spotbugs:check`) -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.8.6.6</version>
+                <configuration>
+                    <effort>Max</effort>
+                    <threshold>Medium</threshold>
+                    <failOnError>true</failOnError>
+                    <includeTests>false</includeTests>
+                </configuration>
+            </plugin>
+
+            <!-- OWASP Dependency-Check: vulnerabilidades en dependencias (invocado en CI con `mvn dependency-check:check`) -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>10.0.4</version>
+                <configuration>
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <formats>
+                        <format>HTML</format>
+                        <format>SARIF</format>
+                    </formats>
+                    <nvdApiDelay>6000</nvdApiDelay>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

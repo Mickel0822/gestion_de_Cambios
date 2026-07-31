@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from typing import Dict, Optional
 
 from src.domain.entities import Job
 from src.domain.repositories import AnalysisServiceClient, JobRepository
@@ -26,7 +25,7 @@ class RetryJobUseCase:
         self.analysis_client = analysis_client
         self.retry_after_seconds = max(1, retry_after_seconds)
 
-    def execute(self, job_id: int) -> Optional[Job]:
+    def execute(self, job_id: int) -> Job | None:
         job = self.job_repository.get_by_id(job_id)
         if not job:
             return None
@@ -55,7 +54,7 @@ class GetJobStatusUseCase:
     def __init__(self, job_repository: JobRepository):
         self.job_repository = job_repository
 
-    def execute(self, job_id: int) -> Optional[Job]:
+    def execute(self, job_id: int) -> Job | None:
         return self.job_repository.get_by_id(job_id)
 
 
@@ -63,5 +62,5 @@ class CheckHealthUseCase:
     def __init__(self, job_repository: JobRepository):
         self.job_repository = job_repository
 
-    def execute(self) -> Dict:
+    def execute(self) -> dict:
         return self.job_repository.check_health()
