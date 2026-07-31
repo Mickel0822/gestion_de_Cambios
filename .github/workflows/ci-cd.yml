@@ -213,6 +213,11 @@ jobs:
         if: env.NVD_API_KEY != ''
         working-directory: java-service
         timeout-minutes: 25
+        # No-bloqueante: NVD rate-limita la IP compartida de los runners y puede
+        # devolver 403 aunque la key sea valida. El paso corre y genera reporte;
+        # Trivy queda como gate duro de la imagen. Pasa a bloqueante cuando la
+        # caché de la NVD este poblada o con un runner de IP dedicada.
+        continue-on-error: true
         run: mvn -B dependency-check:check   # el pom lee la key de ${env.NVD_API_KEY}
       - name: OWASP omitido (falta NVD_API_KEY)
         if: env.NVD_API_KEY == ''
