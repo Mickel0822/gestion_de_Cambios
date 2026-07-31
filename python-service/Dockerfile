@@ -5,18 +5,20 @@ WORKDIR /app
 RUN addgroup --system app && adduser --system --ingroup app app
 
 COPY requirements.txt .
-# La imagen de runtime no necesita herramientas de build (gunicorn 26 no usa
-# setuptools/pkg_resources). Se instalan las dependencias (wheels binarios) y
-# luego se retiran setuptools/wheel de site-packages y los wheels que Python
-# trae empaquetados en ensurepip/_bundled, que Trivy tambien escanea. Elimina
-# los HIGH de la imagen base (p.ej. setuptools CVE-2025-47273).
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip uninstall -y setuptools wheel 2>/dev/null || true \
-    && rm -rf /usr/local/lib/python3.11/ensurepip \
-       /usr/local/lib/python3.11/site-packages/setuptools* \
-       /usr/local/lib/python3.11/site-packages/pkg_resources* \
-       /usr/local/lib/python3.11/site-packages/wheel*
+# La imagen de runtime no necesita herramientas de empaquetado: gunicorn 26,
+# Flask y psycopg2 no usan pip/setuptools/pkg_resources en ejecucion. Tras
+# instalar las dependencias se purgan pip, setuptools, wheel, pkg_resources y
+# ensurepip (incluidos sus paquetes vendored como msgpack), que la imagen base
+# arrastra y Trivy marca como HIGH.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && find /usr/local/lib/python3.11 -depth \( \
+         -name 'pip' -o -name 'pip-*' \
+         -o -name 'setuptools' -o -name 'setuptools-*' \
+         -o -name 'pkg_resources' \
+         -o -name 'wheel' -o -name 'wheel-*' \
+         -o -name '_distutils_hack' -o -name 'ensurepip' \
+       \) -exec rm -rf {} + \
+    && rm -rf /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/wheel
 
 # Copiar la aplicación y estructura de arquitectura limpia
 COPY --chown=app:app src/ ./src
