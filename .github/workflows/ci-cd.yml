@@ -118,7 +118,7 @@ jobs:
             VITE_MAX_TEXT_LENGTH=5000
             VITE_RETRY_AFTER_SECONDS=120
       - name: Seguridad - Trivy (imagen)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
           severity: CRITICAL,HIGH
@@ -166,7 +166,7 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
       - name: Seguridad - Trivy (imagen)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
           severity: CRITICAL,HIGH
@@ -218,7 +218,7 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }},${{ env.IMAGE }}:latest
       - name: Seguridad - Trivy (imagen)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: ${{ env.IMAGE }}:${{ needs.detect-changes.outputs.sha_tag }}
           severity: CRITICAL,HIGH
