@@ -12,6 +12,9 @@ IMAGE_URL="${2:?Falta IMAGE_URL}"
 HEALTH_PATH="${3:-/health}"
 API="https://api.render.com/v1"
 : "${RENDER_API_KEY:?Falta RENDER_API_KEY}"
+# Defensa: eliminar cualquier espacio/salto de linea del secret (un \n en el
+# header Authorization provoca 401 en Render).
+RENDER_API_KEY="$(printf '%s' "$RENDER_API_KEY" | tr -d '[:space:]')"
 
 auth=(-H "Authorization: Bearer ${RENDER_API_KEY}" -H "Accept: application/json")
 
