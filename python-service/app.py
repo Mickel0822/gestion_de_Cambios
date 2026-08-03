@@ -48,7 +48,7 @@ def create_app(job_repository=None, analysis_client=None) -> Flask:
 
     @app.get('/')
     def home():
-        return jsonify({'service': 'AnalytiCore Submission Service', 'status': 'running', 'VERSION': 'DEMO-V4'})
+        return jsonify({'service': 'AnalytiCore Submission Service', 'status': 'running', 'VERSION': 'DEMO-V5'})
 
     @app.errorhandler(413)
     def request_too_large(_error):
