@@ -78,7 +78,7 @@ public class ProcessJobUseCase {
             Function.identity(), LinkedHashMap::new, Collectors.counting()));
         return frequencies.entrySet().stream()
             .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-            .limit(2)
+            .limit(6)
             .map(Map.Entry::getKey)
             .collect(Collectors.joining(", "));
     }
